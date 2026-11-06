@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MathGrapher - インタラクティブ関数グラフ学習ツール</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Noto+Sans+JP:wght@400;500;700&display=swap');
+    body {
+      font-family: 'Plus Jakarta Sans', 'Noto Sans JP', sans-serif;
+      user-select: none;
+    }
+    .math-font {
+      font-family: 'Fira Code', 'Cambria Math', 'Times New Roman', serif;
+    }
+    /* スライダースタイル */
+    input[type=range] {
+      -webkit-appearance: none;
+      background: #e2e8f0;
+      height: 6px;
+      border-radius: 9999px;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      height: 18px;
+      width: 18px;
+      border-radius: 50%;
+      background: #2563eb;
+      cursor: pointer;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+      transition: transform 0.1s;
+    }
+    input[type=range]::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+    }
+    /* キャンバス描画用カーソル */
+    canvas {
+      cursor: grab;
+    }
+    canvas:active {
+      cursor: grabbing;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 h-screen flex flex-col overflow-hidden">
+
+  <!-- ヘッダー -->
+  <header class="bg-slate-950/80 backdrop-blur border-b border-slate-800 px-4 py-2.5 flex items-center justify-between shrink-0 z-30">
+    <div class="flex items-center gap-3">
+      <!-- Apps Hub への戻りリンク -->
+      <a href="../" class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-slate-100 transition py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700/80">
+        <i class="fa-solid fa-arrow-left text-[10px]"></i>
+        <span>Apps Hub</span>
+      </a>
+
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white flex items-center justify-center shadow-lg shadow-blue-500/20">
+        <i class="fa-solid fa-chart-line text-base"></i>
+      </div>
+      <div>
+        <h1 class="text-base font-extrabold tracking-tight text-white flex items-center gap-2">
+          MathGrapher
+          <span class="text-[10px] bg-blue-900/60 text-blue-300 border border-blue-700/50 px-2 py-0.5 rounded-full font-bold">Interactive Lab</span>
+        </h1>
+        <p class="text-xs text-slate-400">一次・二次・三次関数 ＆ 三角関数 直感グラフ学習</p>
+      </div>
+    </div>
+
+    <!-- 画面上部のビューコントロール -->
+    <div class="flex items-center gap-2">
+      <button onclick="resetView()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center gap-1.5" title="原点(0,0)と標準スケールに戻す">
+        <i class="fa-solid fa-arrows-to-dot text-blue-400"></i> 原点に戻す
+      </button>
+      <div class="hidden sm:flex items-center bg-slate-800/80 border border-slate-700 rounded-lg p-0.5 text-xs">
+        <button onclick="zoomBtn(1.2)" class="px-2 py-1 hover:bg-slate-700 rounded text-slate-200" title="ズームイン">
+          <i class="fa-solid fa-magnifying-glass-plus"></i>
+        </button>
+        <button onclick="zoomBtn(0.833)" class="px-2 py-1 hover:bg-slate-700 rounded text-slate-200" title="ズームアウト">
+          <i class="fa-solid fa-magnifying-glass-minus"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- メインコンテンツ (左右2ペイン構造) -->
+  <div class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+
+    <!-- 左側: 操作パネル & 数学情報 (内部スクロール) -->
+    <aside class="w-full md:w-[410px] lg:w-[440px] bg-slate-900 border-r border-slate-800 flex flex-col overflow-y-auto shrink-0 z-10">
+      
+      <!-- 関数種別タブ -->
+      <div class="p-3 bg-slate-950/60 border-b border-slate-800 sticky top-0 z-20 backdrop-blur">
+        <div class="grid grid-cols-4 gap-1 p-1 bg-slate-900 rounded-xl border border-slate-800 text-xs font-bold">
+          <button id="tab-linear" onclick="switchFunction('linear')" class="py-2 rounded-lg transition-all text-center">一次</button>
+          <button id="tab-quadratic" onclick="switchFunction('quadratic')" class="py-2 rounded-lg transition-all text-center">二次</button>
+          <button id="tab-cubic" onclick="switchFunction('cubic')" class="py-2 rounded-lg transition-all text-center">三次</button>
+          <button id="tab-trig" onclick="switchFunction('trig')" class="py-2 rounded-lg transition-all text-center">三角</button>
+        </div>
+
+        <!-- 三角関数の副サブタブ (三角選択時のみ表示) -->
+        <div id="trig-subtabs" class="grid grid-cols-3 gap-1 mt-2 p-0.5 bg-slate-900 rounded-lg border border-slate-800/70 text-xs hidden">
+          <button id="subtab-sin" onclick="switchTrigType('sin')" class="py-1 rounded text-center font-bold">sin(x)</button>
+          <button id="subtab-cos" onclick="switchTrigType('cos')" class="py-1 rounded text-center font-bold">cos(x)</button>
+          <button id="subtab-tan" onclick="switchTrigType('tan')" class="py-1 rounded text-center font-bold">tan(x)</button>
+        </div>
+      </div>
+
+      <!-- 数式カード -->
+      <div class="p-4 border-b border-slate-800 bg-gradient-to-b from-slate-950 to-slate-900">
+        <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
+          <span>現在の関数方程式</span>
+          <span id="formula-badge" class="px-2 py-0.5 rounded text-[10px] bg-blue-500/20 text-blue-300 border border-blue-500/30">y = ax + b</span>
+        </div>
+        <div id="formula-display" class="math-font text-xl sm:text-2xl font-bold text-blue-400 py-1.5 px-3 bg-slate-950 rounded-xl border border-slate-800/80 shadow-inner overflow-x-auto whitespace-nowrap">
+          y = 1.0x + 0.0
+        </div>
+      </div>
+
+      <!-- スライダーコントロール領域 -->
+      <div class="p-4 space-y-4 flex-1">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+            <i class="fa-solid fa-sliders text-blue-500"></i> 係数パラメータ
+          </h2>
+          <button onclick="resetParams()" class="text-[11px] text-blue-400 hover:text-blue-300 font-semibold transition">
+            <i class="fa-solid fa-rotate-left mr-1"></i>標準値に戻す
+          </button>
+        </div>
+
+        <div id="sliders-container" class="space-y-3.5">
+          <!-- JSで動的にパラメータスライダーを生成 -->
+        </div>
+
+        <!-- 特徴点・分析カード -->
+        <div class="pt-2">
+          <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+            <i class="fa-solid fa-bullseye text-emerald-400"></i> 数学的特徴点・プロパティ
+          </h3>
+          <div id="properties-container" class="grid grid-cols-2 gap-2 text-xs">
+            <!-- 特徴点項目が動的に挿入されます -->
+          </div>
+        </div>
+
+        <!-- 特徴の要点解説 -->
+        <div id="explanation-box" class="p-3 bg-slate-950/70 rounded-xl border border-slate-800/90 text-xs text-slate-300 leading-relaxed">
+          <!-- 解説テキストが動的に更新されます -->
+        </div>
+
+      </div>
+
+    </aside>
+
+    <!-- 右側: インタラクティブ Canvas 描画エリア -->
+    <main class="flex-1 relative bg-slate-950 overflow-hidden flex items-center justify-center" id="canvas-container">
+      <canvas id="mathCanvas" class="w-full h-full block"></canvas>
+      
+      <!-- オーバーレイ: 凡例 & ガイドインジケータ -->
+      <div class="absolute top-4 right-4 bg-slate-900/85 backdrop-blur-md border border-slate-700/80 rounded-xl p-3 shadow-xl pointer-events-none text-xs space-y-1.5">
+        <div class="flex items-center gap-2">
+          <span class="w-3.5 h-1 rounded bg-blue-500 inline-block"></span>
+          <span class="font-semibold text-slate-200">関数グラフ <span id="legend-func-name" class="text-blue-400">f(x)</span></span>
+        </div>
+        <div id="legend-points" class="space-y-1 pt-1 border-t border-slate-800 text-[11px]">
+          <div class="flex items-center gap-2 text-emerald-400">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 inline-block ring-2 ring-emerald-950"></span>
+            <span>切片 / 解 (ゼロ点)</span>
+          </div>
+          <div id="legend-special" class="flex items-center gap-2 text-amber-400">
+            <span class="w-2 h-2 rounded-full bg-amber-400 inline-block ring-2 ring-amber-950"></span>
+            <span>頂点 / 極値 / 変曲点</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 操作ヒントバッジ -->
+      <div class="absolute bottom-4 left-4 bg-slate-900/80 backdrop-blur border border-slate-800 px-3 py-1.5 rounded-lg text-[11px] text-slate-400 pointer-events-none hidden sm:block">
+        <i class="fa-solid fa-hand-pointer mr-1"></i>ドラッグで移動 / ホイールで伸縮
+      </div>
+    </main>
+
+  </div>
+
+  <!-- 常時固定フッター（免責事項 & 座標トラッカー） -->
+  <footer class="bg-slate-950 border-t border-slate-800 px-4 py-2 shrink-0 z-30 flex flex-col sm:flex-row items-center justify-between gap-1 text-[11px] text-slate-400">
+    <div class="flex items-center gap-2">
+      <span class="text-amber-500/90 font-bold">⚠️ 免責:</span>
+      <span>個人開発プロトタイプにつき無保証・自己責任にてご利用ください（計算結果の正確性は保証外・完全ローカル動作）</span>
+    </div>
+    <div id="coords-status" class="math-font text-slate-400 shrink-0 font-semibold">
+      X: 0.00, Y: 0.00
+    </div>
+  </footer>
+
+  <script>
+    // ==========================================
+    // アプリケーション状態管理
+    // ==========================================
+    let currentType = 'linear'; // 'linear', 'quadratic', 'cubic', 'trig'
+    let trigType = 'sin';       // 'sin', 'cos', 'tan'
+
+    // 各関数の係数デフォルト設定
+    const params = {
+      linear: { a: 1.0, b: 0.0 },
+      quadratic: { a: 1.0, b: 0.0, c: -2.0 },
+      cubic: { a: 1.0, b: 0.0, c: -3.0, d: 0.0 },
+      trig: { a: 1.0, b: 1.0, c: 0.0, d: 0.0 }
+    };
+
+    // Canvas座標系管理 (原点オフセットと拡大率)
+    let originX = 0;
+    let originY = 0;
+    let scale = 40; // 1単位あたりのピクセル数
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let mouseMathX = 0;
+    let mouseMathY = 0;
+
+    const canvas = document.getElementById('mathCanvas');
+    const ctx = canvas.getContext('2d');
+    const container = document.getElementById('canvas-container');
+
+    // ==========================================
+    // パラメータメタ情報定義
+    // ==========================================
+    const paramDefs = {
+      linear: [
+        { key: 'a', label: '傾き (a)', min: -5, max: 5, step: 0.1, desc: '直線全体の傾き（変化の割合）' },
+        { key: 'b', label: 'y切片 (b)', min: -10, max: 10, step: 0.1, desc: '直線がy軸と交わる点のy座標' }
+      ],
+      quadratic: [
+        { key: 'a', label: '開き具合 (a)', min: -5, max: 5, step: 0.1, desc: '正で下に凸、負で上に凸、絶対値大で急' },
+        { key: 'b', label: 'xの係数 (b)', min: -10, max: 10, step: 0.2, desc: '軸の横移動や原点での接線の傾き' },
+        { key: 'c', label: 'y切片 (c)', min: -10, max: 10, step: 0.2, desc: '放物線がy軸と交わる点のy座標' }
+      ],
+      cubic: [
+        { key: 'a', label: '3次の係数 (a)', min: -3, max: 3, step: 0.1, desc: '正で右上上がり、負で右下がり' },
+        { key: 'b', label: '2次の係数 (b)', min: -5, max: 5, step: 0.1, desc: '対称の中心（変曲点）の横位置' },
+        { key: 'c', label: '1次の係数 (c)', min: -10, max: 10, step: 0.2, desc: '原点での傾き、極値の有無に影響' },
+        { key: 'd', label: '定数項 (d)', min: -10, max: 10, step: 0.2, desc: '曲線全体の上下移動（y切片）' }
+      ],
+      trig: [
+        { key: 'a', label: '振幅 (a)', min: -5, max: 5, step: 0.1, desc: '波の高さ（縦方向の伸縮率）' },
+        { key: 'b', label: '周波数 (b)', min: 0.2, max: 5, step: 0.1, desc: '周期 T = 2π/b (tanは π/b)' },
+        { key: 'c', label: '位相シフト (c)', min: -6.28, max: 6.28, step: 0.1, desc: '横方向のずれ（-c/b 平行移動）' },
+        { key: 'd', label: '上下移動 (d)', min: -5, max: 5, step: 0.1, desc: 'グラフ全体のy軸方向平行移動' }
+      ]
+    };
+
+    // ==========================================
+    // UI制御: タブ切り替え・パラメータ構築
+    // ==========================================
+    function switchFunction(type) {
+      currentType = type;
+      
+      // タブボタンのアクティブ状態更新
+      ['linear', 'quadratic', 'cubic', 'trig'].forEach(t => {
+        const btn = document.getElementById(`tab-${t}`);
+        if (t === type) {
+          btn.className = "py-2 rounded-lg transition-all text-center bg-blue-600 text-white shadow-md shadow-blue-500/20";
+        } else {
+          btn.className = "py-2 rounded-lg transition-all text-center text-slate-400 hover:text-slate-200 hover:bg-slate-800/60";
+        }
+      });
+
+      // 三角サブタブ表示制御
+      const trigSub = document.getElementById('trig-subtabs');
+      if (type === 'trig') {
+        trigSub.classList.remove('hidden');
+        updateTrigSubtabs();
+      } else {
+        trigSub.classList.add('hidden');
+      }
+
+      buildSliders();
+      updateAll();
+    }
+
+    function switchTrigType(sub) {
+      trigType = sub;
+      updateTrigSubtabs();
+      updateAll();
+    }
+
+    function updateTrigSubtabs() {
+      ['sin', 'cos', 'tan'].forEach(st => {
+        const btn = document.getElementById(`subtab-${st}`);
+        if (st === trigType) {
+          btn.className = "py-1 rounded text-center font-bold bg-blue-500/30 text-blue-300 border border-blue-500/40";
+        } else {
+          btn.className = "py-1 rounded text-center font-bold text-slate-400 hover:text-slate-200";
+        }
+      });
+    }
+
+    function buildSliders() {
+      const containerEl = document.getElementById('sliders-container');
+      containerEl.innerHTML = '';
+      const defs = paramDefs[currentType];
+      const cur = params[currentType];
+
+      defs.forEach(def => {
+        const val = cur[def.key];
+        const row = document.createElement('div');
+        row.className = "p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 space-y-2";
+        row.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="text-xs font-bold text-slate-200">${def.label}</span>
+              <p class="text-[10px] text-slate-400">${def.desc}</p>
+            </div>
+            <div class="flex items-center gap-1">
+              <input type="number" id="num-${def.key}" step="${def.step}" value="${val.toFixed(1)}" 
+                class="w-16 px-1.5 py-0.5 text-right font-mono font-bold text-xs bg-slate-900 border border-slate-700 rounded-md text-blue-400 focus:outline-none focus:border-blue-500"
+                onchange="onNumberInput('${def.key}', this.value)"
+              >
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-[10px] text-slate-500 font-mono w-6 text-left">${def.min}</span>
+            <input type="range" id="range-${def.key}" min="${def.min}" max="${def.max}" step="${def.step}" value="${val}"
+              class="w-full cursor-pointer accent-blue-600"
+              oninput="onSliderInput('${def.key}', this.value)"
+            >
+            <span class="text-[10px] text-slate-500 font-mono w-6 text-right">${def.max}</span>
+          </div>
+        `;
+        containerEl.appendChild(row);
+      });
+    }
+
+    function onSliderInput(key, val) {
+      const num = parseFloat(val);
+      params[currentType][key] = num;
+      const numInput = document.getElementById(`num-${key}`);
+      if (numInput) numInput.value = num.toFixed(1);
+      updateAll();
+    }
+
+    function onNumberInput(key, val) {
+      let num = parseFloat(val);
+      if (isNaN(num)) num = 0;
+      params[currentType][key] = num;
+      const rangeInput = document.getElementById(`range-${key}`);
+      if (rangeInput) rangeInput.value = num;
+      updateAll();
+    }
+
+    function resetParams() {
+      if (currentType === 'linear') {
+        params.linear = { a: 1.0, b: 0.0 };
+      } else if (currentType === 'quadratic') {
+        params.quadratic = { a: 1.0, b: 0.0, c: -2.0 };
+      } else if (currentType === 'cubic') {
+        params.cubic = { a: 1.0, b: 0.0, c: -3.0, d: 0.0 };
+      } else if (currentType === 'trig') {
+        params.trig = { a: 1.0, b: 1.0, c: 0.0, d: 0.0 };
+      }
+      buildSliders();
+      updateAll();
+    }
+
+    // ==========================================
+    // 数式計算 & 数式テキスト生成
+    // ==========================================
+    function f(x) {
+      if (currentType === 'linear') {
+        const { a, b } = params.linear;
+        return a * x + b;
+      } else if (currentType === 'quadratic') {
+        const { a, b, c } = params.quadratic;
+        return a * x * x + b * x + c;
+      } else if (currentType === 'cubic') {
+        const { a, b, c, d } = params.cubic;
+        return a * Math.pow(x, 3) + b * Math.pow(x, 2) + c * x + d;
+      } else if (currentType === 'trig') {
+        const { a, b, c, d } = params.trig;
+        const arg = b * x + c;
+        if (trigType === 'sin') return a * Math.sin(arg) + d;
+        if (trigType === 'cos') return a * Math.cos(arg) + d;
+        if (trigType === 'tan') return a * Math.tan(arg) + d;
+      }
+      return 0;
+    }
+
+    function updateFormulaDisplay() {
+      const disp = document.getElementById('formula-display');
+      const badge = document.getElementById('formula-badge');
+      const legFunc = document.getElementById('legend-func-name');
+
+      if (currentType === 'linear') {
+        const { a, b } = params.linear;
+        badge.innerText = "一次関数 y = ax + b";
+        legFunc.innerText = "y = ax + b";
+        let signB = b >= 0 ? `+ ${b.toFixed(1)}` : `- ${Math.abs(b).toFixed(1)}`;
+        disp.innerHTML = `y = <span class="text-white">${a.toFixed(1)}</span>x ${signB}`;
+      } else if (currentType === 'quadratic') {
+        const { a, b, c } = params.quadratic;
+        badge.innerText = "二次関数 y = ax² + bx + c";
+        legFunc.innerText = "y = ax² + bx + c";
+        let signB = b >= 0 ? `+ ${b.toFixed(1)}x` : `- ${Math.abs(b).toFixed(1)}x`;
+        let signC = c >= 0 ? `+ ${c.toFixed(1)}` : `- ${Math.abs(c).toFixed(1)}`;
+        disp.innerHTML = `y = <span class="text-white">${a.toFixed(1)}</span>x² ${signB} ${signC}`;
+      } else if (currentType === 'cubic') {
+        const { a, b, c, d } = params.cubic;
+        badge.innerText = "三次関数 y = ax³ + bx² + cx + d";
+        legFunc.innerText = "y = ax³ + ...";
+        let signB = b >= 0 ? `+ ${b.toFixed(1)}x²` : `- ${Math.abs(b).toFixed(1)}x²`;
+        let signC = c >= 0 ? `+ ${c.toFixed(1)}x` : `- ${Math.abs(c).toFixed(1)}x`;
+        let signD = d >= 0 ? `+ ${d.toFixed(1)}` : `- ${Math.abs(d).toFixed(1)}`;
+        disp.innerHTML = `y = <span class="text-white">${a.toFixed(1)}</span>x³ ${signB} ${signC} ${signD}`;
+      } else if (currentType === 'trig') {
+        const { a, b, c, d } = params.trig;
+        badge.innerText = `三角関数 y = a·${trigType}(bx + c) + d`;
+        legFunc.innerText = `y = a·${trigType}(...)`;
+        let signC = c >= 0 ? `+ ${c.toFixed(1)}` : `- ${Math.abs(c).toFixed(1)}`;
+        let signD = d >= 0 ? `+ ${d.toFixed(1)}` : `- ${Math.abs(d).toFixed(1)}`;
+        disp.innerHTML = `y = <span class="text-white">${a.toFixed(1)}</span>·${trigType}(<span class="text-white">${b.toFixed(1)}</span>x ${signC}) ${signD}`;
+      }
+    }
+
+    // ==========================================
+    // 数学的特徴点の解析と描画データ生成
+    // ==========================================
+    function computeKeyFeatures() {
+      const items = [];
+      let explanation = "";
+      const highlightPoints = [];
+      const highlightLines = [];
+
+      if (currentType === 'linear') {
+        const { a, b } = params.linear;
+        items.push({ label: '傾き (m)', val: a.toFixed(2), desc: 'xが1増加時のy変化量' });
+        items.push({ label: 'y切片 (0, b)', val: `(0, ${b.toFixed(2)})`, desc: 'y軸と交差する点' });
+        
+        highlightPoints.push({ x: 0, y: b, label: `y切片 (0, ${b.toFixed(1)})`, color: '#34d399' });
+
+        if (Math.abs(a) > 0.0001) {
+          const rootX = -b / a;
+          items.push({ label: 'x切片 (零点)', val: `(${rootX.toFixed(2)}, 0)`, desc: 'ax + b = 0 の解' });
+          highlightPoints.push({ x: rootX, y: 0, label: `零点 (${rootX.toFixed(1)}, 0)`, color: '#34d399' });
+        } else {
+          items.push({ label: 'x切片', val: (b === 0 ? '無数' : 'なし'), desc: '水平線' });
+        }
+
+        explanation = a > 0 
+          ? `右上がりの直線です。xが増えるとyも常に増加します（単調増加）。傾きaが大きくなるほど直線の立ち上がりが急になります。`
+          : (a < 0 
+              ? `右下がりの直線です。xが増加するとyは減少します（単調減少）。y切片bを動かすと直線全体が上下に平行移動します。`
+              : `傾き0の水平な直線です（定数関数 y = ${b.toFixed(1)}）。xの値に関わらずyは一定です。`);
+
+      } else if (currentType === 'quadratic') {
+        const { a, b, c } = params.quadratic;
+        
+        if (Math.abs(a) < 0.0001) {
+          items.push({ label: '状態', val: '一次関数に退化', desc: 'a=0のため直線' });
+        } else {
+          const vx = -b / (2 * a);
+          const vy = c - (b * b) / (4 * a);
+          items.push({ label: '頂点座標', val: `(${vx.toFixed(2)}, ${vy.toFixed(2)})`, desc: '放物線の最極点' });
+          items.push({ label: '対称軸', val: `x = ${vx.toFixed(2)}`, desc: '放物線の線対称の軸' });
+
+          highlightPoints.push({ x: vx, y: vy, label: `頂点 (${vx.toFixed(1)}, ${vy.toFixed(1)})`, color: '#fbbf24' });
+          highlightLines.push({ type: 'v', val: vx, color: 'rgba(251, 191, 36, 0.4)' });
+
+          const D = b * b - 4 * a * c;
+          let dText = `D = ${D.toFixed(2)}`;
+          let dDesc = "";
+          if (D > 0.001) {
+            dDesc = "異なる2つの実数解";
+            const x1 = (-b + Math.sqrt(D)) / (2 * a);
+            const x2 = (-b - Math.sqrt(D)) / (2 * a);
+            items.push({ label: '実数解 (x切片)', val: `${Math.min(x1,x2).toFixed(2)}, ${Math.max(x1,x2).toFixed(2)}`, desc: dDesc });
+            highlightPoints.push({ x: x1, y: 0, label: `${x1.toFixed(1)}`, color: '#34d399' });
+            highlightPoints.push({ x: x2, y: 0, label: `${x2.toFixed(1)}`, color: '#34d399' });
+          } else if (Math.abs(D) <= 0.001) {
+            dDesc = "重解 (x軸と接する)";
+            items.push({ label: '実数解 (重解)', val: `${vx.toFixed(2)}`, desc: dDesc });
+            highlightPoints.push({ x: vx, y: 0, label: `重解 ${vx.toFixed(1)}`, color: '#34d399' });
+          } else {
+            dDesc = "実数解なし (共有点0)";
+            items.push({ label: '実数解', val: 'なし (虚数解)', desc: dDesc });
+          }
+          items.push({ label: '判別式 D', val: dText, desc: dDesc });
+
+          items.push({ label: 'y切片 (0, c)', val: `(0, ${c.toFixed(2)})`, desc: 'y軸との交点' });
+          highlightPoints.push({ x: 0, y: c, label: `y切片 (0, ${c.toFixed(1)})`, color: '#34d399' });
+
+          explanation = a > 0
+            ? `下に凸の放物線です。頂点(${vx.toFixed(1)}, ${vy.toFixed(1)})で最小値をとり、判別式 D=${D.toFixed(1)} によりx軸との交点の個数が決まります。`
+            : `上に凸の放物線です。頂点(${vx.toFixed(1)}, ${vy.toFixed(1)})で最大値をとり、左右対称の軸 x=${vx.toFixed(1)} を持ちます。`;
+        }
+
+      } else if (currentType === 'cubic') {
+        const { a, b, c, d } = params.cubic;
+
+        if (Math.abs(a) < 0.0001) {
+          items.push({ label: '状態', val: '二次以下に退化', desc: 'a=0' });
+        } else {
+          const infX = -b / (3 * a);
+          const infY = f(infX);
+          items.push({ label: '変曲点 (点対称)', val: `(${infX.toFixed(2)}, ${infY.toFixed(2)})`, desc: '曲線の凹凸が切り替わる中心' });
+          highlightPoints.push({ x: infX, y: infY, label: `変曲点 (${infX.toFixed(1)}, ${infY.toFixed(1)})`, color: '#ec4899' });
+
+          const D1 = b * b - 3 * a * c;
+          if (D1 > 0.0001) {
+            const x1 = (-b - Math.sqrt(D1)) / (3 * a);
+            const x2 = (-b + Math.sqrt(D1)) / (3 * a);
+            const y1 = f(x1);
+            const y2 = f(x2);
+
+            let maxPoint = a > 0 ? { x: x1, y: y1 } : { x: x2, y: y2 };
+            let minPoint = a > 0 ? { x: x2, y: y2 } : { x: x1, y: y1 };
+
+            items.push({ label: '極大値', val: `(${maxPoint.x.toFixed(2)}, ${maxPoint.y.toFixed(2)})`, desc: '山となる極大点' });
+            items.push({ label: '極小値', val: `(${minPoint.x.toFixed(2)}, ${minPoint.y.toFixed(2)})`, desc: '谷となる極小点' });
+
+            highlightPoints.push({ x: maxPoint.x, y: maxPoint.y, label: `極大 (${maxPoint.x.toFixed(1)}, ${maxPoint.y.toFixed(1)})`, color: '#fbbf24' });
+            highlightPoints.push({ x: minPoint.x, y: minPoint.y, label: `極小 (${minPoint.x.toFixed(1)}, ${minPoint.y.toFixed(1)})`, color: '#fbbf24' });
+
+            explanation = `導関数 f'(x)=0 が2実解をもつため、極大値と極小値の双方が存在します。グラフ全体は変曲点 (${infX.toFixed(1)}, ${infY.toFixed(1)}) に関して点対称です。`;
+          } else if (Math.abs(D1) <= 0.0001) {
+            items.push({ label: '極値', val: 'なし (停留点あり)', desc: '単調増加または減少' });
+            explanation = `変曲点で接線の傾きが0になりますが、極値は持たず単調に増加または減少します。`;
+          } else {
+            items.push({ label: '極値', val: 'なし (常に単調)', desc: '常に関数が一定方向に増加/減少' });
+            explanation = `f'(x)が符号を変えないため、極大・極小を持たずに常に単調に推移する滑らかなS字曲線になります。`;
+          }
+
+          items.push({ label: 'y切片 (0, d)', val: `(0, ${d.toFixed(2)})`, desc: 'x=0での値' });
+          highlightPoints.push({ x: 0, y: d, label: `y切片 (0, ${d.toFixed(1)})`, color: '#34d399' });
+        }
+
+      } else if (currentType === 'trig') {
+        const { a, b, c, d } = params.trig;
+
+        if (trigType === 'tan') {
+          const period = Math.PI / Math.abs(b);
+          items.push({ label: '周期 (T = π/b)', val: `${period.toFixed(2)} (約 ${(period / Math.PI).toFixed(2)}π)`, desc: '繰り返しの間隔' });
+          items.push({ label: '中心線 (y = d)', val: `${d.toFixed(2)}`, desc: '上下の基準位置' });
+          items.push({ label: '漸近線', val: 'x = (π/2 + kπ - c)/b', desc: '関数が発散する境界' });
+
+          const viewLeftX = toMathX(0);
+          const viewRightX = toMathX(canvas.width);
+          const kStart = Math.floor((b * viewLeftX + c - Math.PI / 2) / Math.PI) - 1;
+          const kEnd = Math.ceil((b * viewRightX + c - Math.PI / 2) / Math.PI) + 1;
+          
+          for (let k = kStart; k <= kEnd; k++) {
+            const asymX = (Math.PI / 2 + k * Math.PI - c) / b;
+            highlightLines.push({ type: 'v', val: asymX, color: 'rgba(239, 68, 68, 0.6)', dashed: true });
+          }
+
+          explanation = `正接関数 tan(x) は周期が π/|b| となり、漸近線（赤色破線）に近づくにつれて正負の無限大へと急激に発散します。`;
+
+        } else {
+          const period = (2 * Math.PI) / Math.abs(b);
+          const maxVal = d + Math.abs(a);
+          const minVal = d - Math.abs(a);
+
+          items.push({ label: '周期 (T = 2π/b)', val: `${period.toFixed(2)} (約 ${(period / Math.PI).toFixed(2)}π)`, desc: '波が1往復する横幅' });
+          items.push({ label: '振幅 (|a|)', val: `${Math.abs(a).toFixed(2)}`, desc: '中心からの最大振れ幅' });
+          items.push({ label: '最大値', val: `${maxVal.toFixed(2)}`, desc: 'yの最大到達点' });
+          items.push({ label: '最小値', val: `${minVal.toFixed(2)}`, desc: 'yの最小到達点' });
+
+          highlightLines.push({ type: 'h', val: maxVal, color: 'rgba(52, 211, 153, 0.25)', dashed: true });
+          highlightLines.push({ type: 'h', val: minVal, color: 'rgba(52, 211, 153, 0.25)', dashed: true });
+          highlightLines.push({ type: 'h', val: d, color: 'rgba(148, 163, 184, 0.25)', dashed: true });
+
+          explanation = `${trigType.toUpperCase()}(x) の波形です。係数 a で縦の振幅が、b で波の波長（周期 T=2π/b）が変わり、c で横方向の位相差、d で波全体が上下にシフトします。`;
+        }
+      }
+
+      const propBox = document.getElementById('properties-container');
+      propBox.innerHTML = items.map(it => `
+        <div class="p-2.5 bg-slate-950/80 rounded-xl border border-slate-800 flex flex-col justify-between">
+          <span class="text-[10px] font-bold text-slate-400">${it.label}</span>
+          <span class="math-font text-sm font-bold text-emerald-400 mt-0.5 truncate" title="${it.val}">${it.val}</span>
+          <span class="text-[9px] text-slate-500 mt-0.5 truncate">${it.desc}</span>
+        </div>
+      `).join('');
+
+      document.getElementById('explanation-box').innerText = explanation;
+
+      return { highlightPoints, highlightLines };
+    }
+
+    // ==========================================
+    // Canvas 描画エンジン
+    // ==========================================
+    function resizeCanvas() {
+      const rect = container.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.resetTransform();
+      ctx.scale(dpr, dpr);
+      
+      if (originX === 0 && originY === 0) {
+        originX = rect.width / 2;
+        originY = rect.height / 2;
+      }
+      draw();
+    }
+
+    function toScreenX(x) { return originX + x * scale; }
+    function toScreenY(y) { return originY - y * scale; }
+    function toMathX(px) { return (px - originX) / scale; }
+    function toMathY(py) { return (originY - py) / scale; }
+
+    function draw() {
+      const width = canvas.width / (window.devicePixelRatio || 1);
+      const height = canvas.height / (window.devicePixelRatio || 1);
+
+      ctx.fillStyle = "#020617";
+      ctx.fillRect(0, 0, width, height);
+
+      const minPixelGrid = 45;
+      const rawStep = minPixelGrid / scale;
+      const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+      const residual = rawStep / mag;
+      let gridStep = mag;
+      if (residual > 5) gridStep = 10 * mag;
+      else if (residual > 2) gridStep = 5 * mag;
+      else if (residual > 1) gridStep = 2 * mag;
+
+      // 1. グリッド線
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "#1e293b";
+      ctx.beginPath();
+
+      const startX = Math.floor(toMathX(0) / gridStep) * gridStep;
+      const endX = Math.ceil(toMathX(width) / gridStep) * gridStep;
+      for (let x = startX; x <= endX; x += gridStep) {
+        const px = toScreenX(x);
+        ctx.moveTo(px, 0);
+        ctx.lineTo(px, height);
+      }
+
+      const startY = Math.floor(toMathY(height) / gridStep) * gridStep;
+      const endY = Math.ceil(toMathY(0) / gridStep) * gridStep;
+      for (let y = startY; y <= endY; y += gridStep) {
+        const py = toScreenY(y);
+        ctx.moveTo(0, py);
+        ctx.lineTo(width, py);
+      }
+      ctx.stroke();
+
+      // 2. 主軸 (X軸・Y軸)
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#475569";
+      ctx.beginPath();
+      ctx.moveTo(0, originY);
+      ctx.lineTo(width, originY);
+      ctx.moveTo(originX, 0);
+      ctx.lineTo(originX, height);
+      ctx.stroke();
+
+      // 3. 軸の目盛りラベル
+      ctx.fillStyle = "#64748b";
+      ctx.font = "10px 'Fira Code', monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+
+      for (let x = startX; x <= endX; x += gridStep) {
+        if (Math.abs(x) < 0.0001) continue;
+        const px = toScreenX(x);
+        const yPos = Math.min(Math.max(originY + 4, 18), height - 16);
+        ctx.fillText(Number(x.toFixed(4)).toString(), px, yPos);
+      }
+
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      for (let y = startY; y <= endY; y += gridStep) {
+        if (Math.abs(y) < 0.0001) continue;
+        const py = toScreenY(y);
+        const xPos = Math.min(Math.max(originX - 6, 28), width - 6);
+        ctx.fillText(Number(y.toFixed(4)).toString(), xPos, py);
+      }
+
+      if (originX >= 0 && originX <= width && originY >= 0 && originY <= height) {
+        ctx.textAlign = "right";
+        ctx.textBaseline = "top";
+        ctx.fillText("O", originX - 4, originY + 4);
+      }
+
+      const { highlightPoints, highlightLines } = computeKeyFeatures();
+
+      // 4. 特徴補助線
+      highlightLines.forEach(line => {
+        ctx.save();
+        ctx.strokeStyle = line.color;
+        ctx.lineWidth = 1.5;
+        if (line.dashed) ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        if (line.type === 'v') {
+          const px = toScreenX(line.val);
+          ctx.moveTo(px, 0);
+          ctx.lineTo(px, height);
+        } else if (line.type === 'h') {
+          const py = toScreenY(line.val);
+          ctx.moveTo(0, py);
+          ctx.lineTo(width, py);
+        }
+        ctx.stroke();
+        ctx.restore();
+      });
+
+      // 5. 関数グラフ曲線
+      ctx.save();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#3b82f6";
+      ctx.shadowColor = "rgba(59, 130, 246, 0.4)";
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+
+      let isDrawingLine = false;
+      const stepPixels = 1.5;
+
+      for (let px = 0; px <= width; px += stepPixels) {
+        const mx = toMathX(px);
+        const my = f(mx);
+
+        if (isNaN(my) || !isFinite(my) || Math.abs(my) > 1000) {
+          isDrawingLine = false;
+          continue;
+        }
+
+        const py = toScreenY(my);
+
+        if (!isDrawingLine) {
+          ctx.moveTo(px, py);
+          isDrawingLine = true;
+        } else {
+          ctx.lineTo(px, py);
+        }
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      // 6. 数学的特徴点プロット
+      highlightPoints.forEach(pt => {
+        const px = toScreenX(pt.x);
+        const py = toScreenY(pt.y);
+
+        if (px < -20 || px > width + 20 || py < -20 || py > height + 20) return;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(px, py, 6, 0, Math.PI * 2);
+        ctx.fillStyle = pt.color;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#020617";
+        ctx.stroke();
+
+        ctx.font = "bold 11px 'Plus Jakarta Sans', sans-serif";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        
+        const labelText = pt.label;
+        const textWidth = ctx.measureText(labelText).width;
+        
+        ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+        ctx.fillRect(px + 9, py - 11, textWidth + 8, 22);
+        ctx.strokeStyle = pt.color;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px + 9, py - 11, textWidth + 8, 22);
+
+        ctx.fillStyle = "#f8fafc";
+        ctx.fillText(labelText, px + 13, py);
+        ctx.restore();
+      });
+    }
+
+    function updateAll() {
+      updateFormulaDisplay();
+      draw();
+    }
+
+    // ==========================================
+    // キャンバス操作イベント (ドラッグ・ズーム)
+    // ==========================================
+    function resetView() {
+      const rect = container.getBoundingClientRect();
+      originX = rect.width / 2;
+      originY = rect.height / 2;
+      scale = 40;
+      draw();
+    }
+
+    function zoomBtn(factor) {
+      const rect = container.getBoundingClientRect();
+      const cx = rect.width / 2;
+      const cy = rect.height / 2;
+      zoomAt(cx, cy, factor);
+    }
+
+    function zoomAt(screenX, screenY, factor) {
+      const mathX = toMathX(screenX);
+      const mathY = toMathY(screenY);
+
+      scale *= factor;
+      scale = Math.max(5, Math.min(600, scale));
+
+      originX = screenX - mathX * scale;
+      originY = screenY + mathY * scale;
+
+      draw();
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.clientX - rect.left;
+      const clientY = e.clientY - rect.top;
+
+      if (isDragging) {
+        originX += (e.clientX - dragStartX);
+        originY += (e.clientY - dragStartY);
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        draw();
+      }
+
+      if (clientX >= 0 && clientX <= rect.width && clientY >= 0 && clientY <= rect.height) {
+        mouseMathX = toMathX(clientX);
+        mouseMathY = toMathY(clientY);
+        document.getElementById('coords-status').innerText = `X: ${mouseMathX.toFixed(2)}, Y: ${mouseMathY.toFixed(2)}`;
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.clientX - rect.left;
+      const clientY = e.clientY - rect.top;
+
+      const factor = e.deltaY < 0 ? 1.15 : 0.87;
+      zoomAt(clientX, clientY, factor);
+    }, { passive: false });
+
+    let touchStartDist = 0;
+    canvas.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        isDragging = true;
+        dragStartX = e.touches[0].clientX;
+        dragStartY = e.touches[0].clientY;
+      } else if (e.touches.length === 2) {
+        isDragging = false;
+        touchStartDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+      }
+    });
+
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (e.touches.length === 1 && isDragging) {
+        originX += (e.touches[0].clientX - dragStartX);
+        originY += (e.touches[0].clientY - dragStartY);
+        dragStartX = e.touches[0].clientX;
+        dragStartY = e.touches[0].clientY;
+        draw();
+      } else if (e.touches.length === 2) {
+        const dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        if (touchStartDist > 0) {
+          const factor = dist / touchStartDist;
+          const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+          const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+          const rect = canvas.getBoundingClientRect();
+          zoomAt(midX - rect.left, midY - rect.top, factor);
+        }
+        touchStartDist = dist;
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', () => {
+      isDragging = false;
+      touchStartDist = 0;
+    });
+
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      switchFunction('linear');
+      resizeCanvas();
+    });
+  </script>
+</body>
+</html>
